@@ -51,9 +51,37 @@ let
         if nixSupportsSubmodules
         then { inherit submodules; }
         else emptyArgWithWarning;
+      urlArg =
+        let
+          maybeUrl = spec.url or spec.repo;
+          urlLength = builtins.stringLength maybeUrl;
+          urlSuffix =
+            suffixLength: builtins.substring
+              (urlLength - (suffixLength + 1)) urlLength maybeUrl;
+          urlPrefix =
+            prefixLength: builtins.substring 0 prefixLength maybeUrl;
+          isURLGit =
+            (urlSuffix 4) == ".git"
+            || (urlPrefix 4) == "git@"
+            || (urlPrefix 6) == "ssh://"
+            || (urlPrefix 12) == "git+https://";
+          isURLGitHub = (urlPrefix 18) == "https://github.com";
+        in 
+        if isURLGit
+        then maybeUrl
+        else if isURLGitHub
+        then "${builtins.elemAt (builtins.split "/archive/" maybeUrl) 0}.git"
+        else builtins.trace
+          (
+            "The niv input \"${name}\" uses builtins.fetchGit "
+            + "but its repo url \"${maybeUrl}\" does not look like a git or GitHub"
+            + "url."
+          )
+          spec.repo;
     in
     builtins.fetchGit
-      ({ url = spec.repo; inherit (spec) rev; inherit ref; } // submoduleArg);
+      ({ name = "${name}-git-source"; url = urlArg; inherit (spec) rev; inherit ref; } // submoduleArg);
+
 
   fetch_local = spec: spec.path;
 
